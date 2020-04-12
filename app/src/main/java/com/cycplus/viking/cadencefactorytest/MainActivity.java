@@ -2,7 +2,9 @@ package com.cycplus.viking.cadencefactorytest;
 
 import android.Manifest;
 import android.bluetooth.BluetoothDevice;
+import android.app.AlertDialog;
 import android.content.Context;
+import android.content.DialogInterface;
 import android.content.pm.PackageManager;
 import android.graphics.Color;
 import android.os.Build;
@@ -18,6 +20,7 @@ import android.view.ViewGroup;
 import android.widget.AdapterView;
 import android.widget.BaseAdapter;
 import android.widget.Button;
+import android.widget.EditText;
 import android.widget.ImageView;
 import android.widget.ListView;
 import android.widget.TextView;
@@ -26,10 +29,14 @@ import org.greenrobot.eventbus.EventBus;
 import org.greenrobot.eventbus.Subscribe;
 import org.greenrobot.eventbus.ThreadMode;
 
+import java.io.File;
+import java.sql.Date;
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Locale;
 import java.util.Objects;
 
 import butterknife.BindView;
@@ -81,6 +88,7 @@ public class MainActivity extends AppCompatActivity {
             BluetoothCenter.getInstance().scanDevices();
         }
 
+        checkPermission();
 
         adapter = new scanAdapter(this);
         scanResult.setAdapter(adapter);
@@ -149,6 +157,36 @@ public class MainActivity extends AppCompatActivity {
             BluetoothEvent e = (BluetoothEvent) event;
             if (e.identifier.equals(BluetoothEvent.BLUETOOTH_CONNECTED_PERIPHERAL)) {
                 refreshList();
+            } else if (e.identifier.equals(BluetoothEvent.BLUETOOTH_UPDATE_SERIAL_NUMBER)) {
+
+                final String macAddress = e.MacAddress;
+                final String serialNumber = e.SerialNumber;
+                // dialog
+                final EditText edit = new EditText(this);
+                edit.setHint("输入注释");
+                AlertDialog.Builder b = new AlertDialog.Builder(this);
+                b.setView(edit);
+                b.setTitle("Alert");
+                b.setMessage("mac: " + macAddress + "\n" + "sn: " + serialNumber + "\n");
+                b.setPositiveButton("OK", new DialogInterface.OnClickListener() {
+                    @Override
+                    public void onClick(DialogInterface dialog, int which) {
+                        dialog.dismiss();
+                        // 保存信息
+                        SimpleDateFormat simpleDateFormat = new SimpleDateFormat("yyyy年MM月dd日 HH:mm:ss", Locale.CHINA);// HH:mm:ss
+//获取当前时间
+                        Date date = new Date(System.currentTimeMillis());
+                        String markString = "备注: " + (edit.getText() == null ? serialNumber : edit.getText());
+                        FileUtil.saveFile("时间 :" + simpleDateFormat.format(date) + "\n" + markString + "\n" + "mac: " + macAddress + "\n" + "sn: " + serialNumber + "\n\n\n", "sensor_info.txt");
+                    }
+                });
+                b.setOnCancelListener(new DialogInterface.OnCancelListener() {
+                    @Override
+                    public void onCancel(DialogInterface dialog) {
+                        dialog.dismiss();
+                    }
+                });
+                b.create().show();
             } else {
                 console.setText("");
                 BluetoothCenter.getInstance().scanDevices();
@@ -264,6 +302,28 @@ public class MainActivity extends AppCompatActivity {
             }
             return view;
         }
+    }
+
+    public void checkPermission() {
+        boolean isGranted = true;
+        if (android.os.Build.VERSION.SDK_INT >= 23) {
+            if (this.checkSelfPermission(Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
+                //如果没有写sd卡权限
+                isGranted = false;
+            }
+            if (this.checkSelfPermission(Manifest.permission.READ_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
+                isGranted = false;
+            }
+            if (!isGranted) {
+                this.requestPermissions(
+                        new String[]{Manifest.permission.ACCESS_COARSE_LOCATION, Manifest.permission
+                                .ACCESS_FINE_LOCATION,
+                                Manifest.permission.READ_EXTERNAL_STORAGE,
+                                Manifest.permission.WRITE_EXTERNAL_STORAGE},
+                        102);
+            }
+        }
+
     }
 
 }

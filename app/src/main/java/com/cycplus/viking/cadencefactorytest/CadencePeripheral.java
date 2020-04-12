@@ -28,12 +28,13 @@ public class CadencePeripheral {
 
     private BluetoothGatt gatt;
     private BluetoothGattCharacteristic notifyCharacteristic;
+    //  序列号
+    private BluetoothGattCharacteristic serialNumberCharacteristic;
     private BluetoothGattService notifyService;
 
     private BluetoothGattCharacteristic softwareCharacteristic;
     private BluetoothGattCharacteristic hardwareCharacteristic;
     private BluetoothGattCharacteristic sleepCharacteristic;
-
 
 
     public BluetoothDevice bleDevice;
@@ -49,6 +50,8 @@ public class CadencePeripheral {
 
     private String soft_version;
     private String hard_version;
+
+    private String serial_number;
 
     private float delta_cadence;
     private float delta_speed;
@@ -231,7 +234,7 @@ public class CadencePeripheral {
             if (status == GATT_SUCCESS) {
                 notifyService = gatt.getService(UUID.fromString(BluetoothFilterAttributes.kServer));
                 for (BluetoothGattCharacteristic characteristic : notifyService.getCharacteristics()) {
-                    Log.e("SERVICE", characteristic.getUuid().toString());
+                    Log.v("SERVICE", "notifyService: " + characteristic.getUuid().toString());
                     if (characteristic.getUuid().toString().equalsIgnoreCase(BluetoothFilterAttributes.KCharacteristic)) {
                         notifyCharacteristic = characteristic;
                         boolean listening = gatt.setCharacteristicNotification(notifyCharacteristic, true);
@@ -247,12 +250,17 @@ public class CadencePeripheral {
 
                 BluetoothGattService deviceService=gatt.getService(UUID.fromString(BluetoothFilterAttributes.kDeviceInfoServer));
                 for (BluetoothGattCharacteristic ch:deviceService.getCharacteristics()){
+                    Log.v("SERVICE", "infoService" + ch.getUuid().toString());
                     if (ch.getUuid().toString().equalsIgnoreCase(BluetoothFilterAttributes.kDeviceSoftInfoCharacteristic)){
                         softwareCharacteristic=ch;
                         continue;
                     }
                     if (ch.getUuid().toString().equalsIgnoreCase(BluetoothFilterAttributes.kDeviceHardInfoCharacteristic)){
                         hardwareCharacteristic=ch;
+                        continue;
+                    }
+                    if (ch.getUuid().toString().equalsIgnoreCase(BluetoothFilterAttributes.KSerialNumberCharacteristic)){
+                        serialNumberCharacteristic=ch;
                         continue;
                     }
                 }
@@ -267,6 +275,17 @@ public class CadencePeripheral {
                     }
                 }
 
+                if (serialNumberCharacteristic != null) {
+                    App.sharedApp().getMainHandler().postDelayed(new Runnable() {
+                                                                     @Override
+                                                                     public void run() {
+                                                                         CadencePeripheral.this.gatt.readCharacteristic(serialNumberCharacteristic);
+                                                                     }
+                                                                 }
+                            , 2000
+                    );
+                }
+
                 if (notifyCharacteristic != null) {
                     BluetoothEvent event = new BluetoothEvent();
                     CadencePeripheral.this.state = 2;
@@ -276,14 +295,15 @@ public class CadencePeripheral {
                     event.MacAddress = event.device.getAddress();
                     EventBus.getDefault().post(event);
                     Log.d("Bluetooth", "Characteristic found");
-                    if (hardwareCharacteristic!=null&&softwareCharacteristic!=null){
-                        App.sharedApp().getMainHandler().post(new Runnable() {
-                            @Override
-                            public void run() {
-                                CadencePeripheral.this.gatt.readCharacteristic(hardwareCharacteristic);
-                            }
-                        });
-                    }
+//                    if (hardwareCharacteristic!=null&&softwareCharacteristic!=null){
+//                        App.sharedApp().getMainHandler().postDelayed(new Runnable() {
+//                            @Override
+//                            public void run() {
+//                                CadencePeripheral.this.gatt.readCharacteristic(hardwareCharacteristic);
+//                            }
+//                        }, 2000);
+//                    }
+
                 }
             }
         }
@@ -323,6 +343,10 @@ public class CadencePeripheral {
             }else if (characteristic==softwareCharacteristic){
                 soft_version=new String(softwareCharacteristic.getValue());
                 version_updated();
+            } else if (characteristic == serialNumberCharacteristic) {
+                serial_number = new String(serialNumberCharacteristic.getValue());
+                Log.d("SerialNumber", "did read serial number: " + serial_number);
+                serial_number_updated();
             }
         }
 
@@ -349,6 +373,23 @@ public class CadencePeripheral {
         EventBus.getDefault().post(event1);
     }
 
+    void serial_number_updated() {
+        String msg = "";
+        if (serial_number != null) {
+            msg = msg + "SN:" + serial_number + "\n";
+        }
+        MSGEvent event=new MSGEvent(msg);
+        EventBus.getDefault().post(event);
+
+        BluetoothEvent bEvent = new BluetoothEvent();
+        bEvent.identifier = BluetoothEvent.BLUETOOTH_UPDATE_SERIAL_NUMBER;
+        bEvent.device = CadencePeripheral.this.bleDevice;
+        bEvent.DeviceName = bEvent.device.getName();
+        bEvent.MacAddress = bEvent.device.getAddress();
+        bEvent.SerialNumber = serial_number;
+        EventBus.getDefault().post(bEvent);
+    }
+
     public String getSoft_version() {
         if (soft_version!=null) return soft_version;
         return "???";
@@ -356,6 +397,12 @@ public class CadencePeripheral {
 
     public String getHard_version() {
         if (hard_version!=null) return hard_version;
+        return "???";
+    }
+
+    public String getSerial_number() {
+        if (serial_number != null)
+            return serial_number;
         return "???";
     }
 
